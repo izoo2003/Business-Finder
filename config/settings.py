@@ -26,7 +26,9 @@ FRONTEND_ORIGINS = env.list(
 CSRF_TRUSTED_ORIGINS = list(dict.fromkeys([*CSRF_TRUSTED_ORIGINS, *FRONTEND_ORIGINS]))
 
 if not DEBUG:
-    SECURE_SSL_REDIRECT = env.bool("SECURE_SSL_REDIRECT", default=True)
+    # Railway (and similar) terminate TLS at the edge. Redirecting again from
+    # Django breaks reverse proxies (e.g. Vercel → Railway) with loops.
+    SECURE_SSL_REDIRECT = env.bool("SECURE_SSL_REDIRECT", default=False)
     SESSION_COOKIE_SECURE = True
     CSRF_COOKIE_SECURE = True
     SECURE_HSTS_SECONDS = env.int("SECURE_HSTS_SECONDS", default=31536000)

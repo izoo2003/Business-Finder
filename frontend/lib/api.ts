@@ -23,13 +23,20 @@ async function ensureCsrf(): Promise<string> {
     });
   } catch {
     throw new Error(
-      "Could not reach the API. Check BACKEND_URL on Vercel and that Railway is up.",
+      "Could not reach the API. Redeploy Vercel after setting BACKEND_URL, and confirm Railway is online.",
     );
   }
   if (!response.ok) {
-    throw new Error(
-      `Could not start a secure session (HTTP ${response.status}).`,
-    );
+    let detail = `Could not start a secure session (HTTP ${response.status}).`;
+    try {
+      const data = (await response.json()) as { detail?: string };
+      if (typeof data.detail === "string" && data.detail) {
+        detail = data.detail;
+      }
+    } catch {
+      /* ignore */
+    }
+    throw new Error(detail);
   }
   const data = (await response.json()) as { csrfToken: string };
   csrfToken = data.csrfToken;
