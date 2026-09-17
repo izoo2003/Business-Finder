@@ -1,0 +1,86 @@
+---
+description: Full architecture for US Business Phone Number Collection Agent
+alwaysApply: true
+---
+
+# US Business Phone Number Collection Agent
+
+## Goal and scope
+
+Continuous background agent that collects publicly listed US business phone numbers.
+
+- **Primary**: Official structured APIs (Yelp Fusion, Google Places, Foursquare Places, OpenStreetMap/Overpass).
+- **Secondary**: Limited crawling of specifically authorized sites only (permission-gated fallback).
+- **Output**: Growing, clean DB of unique US phones with provenance (source, business name, address, category, timestamps, validation).
+- Stay within free/approved quotas and company permissions. Prefer APIs over scraping.
+
+## Stack
+
+Django (models, admin, tasks) + Celery (or Django-Q) + Redis + PostgreSQL.
+
+## Architecture layers
+
+1. **Source Registry** — catalogue of APIs + approved websites (credentials, quotas, params, priority, last run).
+2. **Acquisition** — API clients first; optional polite crawler for approved sites only.
+3. **Normalization & Validation** — E.164 US numbers; reject invalid; area-code → state when possible.
+4. **Storage & Deduplication** — unique E.164 key; merge context on re-see; keep raw payload for audit.
+5. **Enrichment** (optional) — free validation, line-type, geography, risk; rate-limited.
+6. **Orchestration** — schedule jobs, quotas, health, internal admin/search.
+7. **Audit & Compliance** — log every fetch; respect rate limits; record exact source.
+
+## Source registry fields
+
+Name, type (API|website), credentials (secure), free/approved quotas + reset times, allowed query params (cities, categories, radius, pagination), priority, last successful run, data-quality notes. Scheduler only runs active sources with remaining quota.
+
+### Primary sources
+
+| Source | Notes |
+|--------|--------|
+| Yelp Fusion / Places | High-quality structured records; limited free calls (often hundreds/day). Best quality start. |
+| Google Places | Highest completeness; free caps per SKU; phone often higher-cost SKU. |
+| Foursquare Places | Phones often Pro tier; free often hundreds/month. |
+| OSM / Overpass | Fully free, no key; incomplete phone coverage; highest free volume. |
+| Authorized websites | Explicit permission only; low-priority fallback. |
+
+## Acquisition flow
+
+1. **Job trigger** — daily/hourly/on-demand; pick next eligible source (priority, quota, last-run).
+2. **Query construction** — city/bbox + category; optional radius/text; pagination (offset/limit/next-page token). Overpass: area + tags (`phone`, `contact:phone`, amenity/shop).
+3. **Fetch** — authenticated/public requests; JSON/XML; obey rate-limit headers; log failures; resume from page token.
+4. **Extract** — phone(s), name, address/city/state/postal, category, source ID/URL, extras (hours, website, rating). Pass candidates with full context downstream.
+5. **Website fallback** (if authorized) — approved sections only; polite delays; headless only if needed; extract phones + surrounding text into same candidate shape.
+
+## Normalization & validation
+
+1. Strip decorative chars, extensions, noise.
+2. Parse as US (+1).
+3. Convert to E.164.
+4. Reject bad length/area-code/validity.
+5. Extract area code → state via public tables when possible.
+6. Keep original raw text + source context.
+
+Only clean valid US numbers proceed.
+
+## Storage & deduplication
+
+Store: E.164 (unique), national format, source + exact query/page, business context, first/last seen, validation/enrichment status, raw payload. On reappearance: update last-seen and append context — no duplicate rows.
+
+## Enrichment (optional, rate-limited)
+
+Offline formatting/line-type hints; free-tier validators (e.g. DialCode ~1k/month); public area-code geography. Write results back onto same records; never exhaust free quotas.
+
+## Orchestration & monitoring
+
+Rotate sources by remaining quota + priority; check quotas before run, update after response. Metrics: yield per source, success rate, quota burn, API/structure errors. Alerts: format change, quota nearly exhausted, sharp yield drop. Admin: enable/disable sources, harvest stats, search by area code/state/source/date, manual targeted runs. Full audit logs.
+
+## Free limits strategy
+
+OSM = bulk free volume. Yelp/Google/Foursquare used first for quality; back off when free calls low. Merge + dedupe across sources. Cache within each API’s allowed window. When commercial free capacity is exhausted, continue with OSM + authorized sites until reset.
+
+## Daily / continuous cycle
+
+Scheduler → eligible sources → structured queries → extract → E.164 validate → unique store + provenance → parallel enrichment → metrics/quotas → repeat.
+
+## Operational safeguards
+
+Strict quota/rate-limit obedience; full provenance; dedupe; instant pause per source; audit trail; APIs preferred over scraping.

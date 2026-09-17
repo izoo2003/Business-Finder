@@ -1,0 +1,56 @@
+# Environment — never commit real secrets
+.env
+.env.*
+!.env.example
+.venv/
+venv/
+env/
+.secrets/
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+*.egg-info/
+dist/
+build/
+
+# Django
+*.log
+local_settings.py
+db.sqlite3
+staticfiles/
+media/
+
+# Logs
+logs/
+
+# Celery
+celerybeat-schedule
+celerybeat-schedule.*
+celerybeat.pid
+
+# Credentials / keys
+*.pem
+*.key
+credentials.json
+service-account*.json
+
+# IDE / OS
+.idea/
+.vscode/
+*.swp
+.DS_Store
+Thumbs.db
+
+# Operator UI
+node_modules/
+.next/
+frontend/.env.local
+frontend/.env*.local
+
+# Cursor local (keep rules if committed separately; ignore cache)
+.cursor/projects/
+

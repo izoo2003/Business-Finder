@@ -1,0 +1,240 @@
+{% extends "admin/base_site.html" %}
+{% load i18n static %}
+
+{% block extrastyle %}{{ block.super }}
+<style>
+  .ops-dashboard { margin: 0 0 24px; }
+  .ops-dashboard h2 { margin-top: 1.25em; }
+  .ops-alerts { list-style: none; padding: 0; margin: 0 0 1em; }
+  .ops-alerts li {
+    padding: 10px 12px;
+    margin-bottom: 8px;
+    border-left: 4px solid #666;
+    background: var(--darkened-bg, #f8f8f8);
+  }
+  .ops-alerts li.warning { border-left-color: #b86e00; }
+  .ops-alerts li.error { border-left-color: #ba2121; }
+  .ops-alerts .ops-title { font-weight: 600; display: block; }
+  .ops-alerts .ops-detail { font-size: 0.92em; opacity: 0.9; }
+  .ops-table { width: 100%; border-collapse: collapse; margin-bottom: 1em; }
+  .ops-table th, .ops-table td {
+    text-align: left;
+    padding: 6px 8px;
+    border-bottom: 1px solid var(--hairline-color, #ddd);
+    font-size: 0.95em;
+  }
+  .ops-table th { font-weight: 600; }
+  .ops-muted { opacity: 0.7; }
+  .ops-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px; margin-bottom: 1em; }
+  .ops-card {
+    border: 1px solid var(--hairline-color, #ddd);
+    padding: 10px 12px;
+    background: var(--body-bg, #fff);
+  }
+  .ops-card .ops-metric { font-size: 1.4em; font-weight: 600; }
+  .ops-status-healthy { color: #0a7a2f; }
+  .ops-status-low { color: #b86e00; }
+  .ops-status-exhausted, .ops-status-error { color: #ba2121; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="ops-dashboard">
+  <h1>{% translate "Operations dashboard" %}</h1>
+
+  {% if ops_alerts %}
+  <h2>{% translate "Alerts" %}</h2>
+  <ul class="ops-alerts">
+    {% for alert in ops_alerts %}
+    <li class="{{ alert.level }}">
+      <span class="ops-title">{{ alert.title }}</span>
+      <span class="ops-detail">{{ alert.detail }}</span>
+    </li>
+    {% endfor %}
+  </ul>
+  {% else %}
+  <p class="ops-muted">{% translate "No active alerts." %}</p>
+  {% endif %}
+
+  <h2>{% translate "Source quotas" %}</h2>
+  <table class="ops-table">
+    <thead>
+      <tr>
+        <th>{% translate "Source" %}</th>
+        <th>{% translate "Active" %}</th>
+        <th>{% translate "Status" %}</th>
+        <th>{% translate "Remaining" %}</th>
+        <th>{% translate "Usable" %}</th>
+        <th>{% translate "Window" %}</th>
+        <th>{% translate "Reset" %}</th>
+        <th>{% translate "Last success" %}</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for row in ops_quota_rows %}
+      <tr>
+        <td>{{ row.name }} <span class="ops-muted">({{ row.slug }})</span></td>
+        <td>{% if row.is_active %}yes{% else %}no{% endif %}</td>
+        <td class="ops-status-{{ row.quota_status }}">{{ row.quota_status }}</td>
+        <td>
+          {% if row.quota_remaining != None %}
+            {{ row.quota_remaining }}{% if row.quota_max != None %} / {{ row.quota_max }}{% endif %}
+          {% else %}
+            —
+          {% endif %}
+        </td>
+        <td>{% if row.usable != None %}{{ row.usable }}{% else %}∞{% endif %}</td>
+        <td>{{ row.window_type }}</td>
+        <td>{% if row.quota_reset_at %}{{ row.quota_reset_at }}{% else %}—{% endif %}</td>
+        <td>{% if row.last_successful_run_at %}{{ row.last_successful_run_at }}{% else %}—{% endif %}</td>
+      </tr>
+      {% empty %}
+      <tr><td colspan="8">{% translate "No data sources." %}</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+
+  <h2>{% translate "Recent harvest" %}</h2>
+  <div class="ops-grid">
+    <div class="ops-card">
+      <div>{% translate "Last 24h saved" %}</div>
+      <div class="ops-metric">{{ ops_harvest_24h.saved }}</div>
+      <div class="ops-muted">
+        runs {{ ops_harvest_24h.total }} · ok {{ ops_harvest_24h.success }} ·
+        fail {{ ops_harvest_24h.failed }} · skip {{ ops_harvest_24h.skipped }}
+      </div>
+    </div>
+    <div class="ops-card">
+      <div>{% translate "Last 7d saved" %}</div>
+      <div class="ops-metric">{{ ops_harvest_7d.saved }}</div>
+      <div class="ops-muted">
+        runs {{ ops_harvest_7d.total }} · updated {{ ops_harvest_7d.updated }} ·
+        fail {{ ops_harvest_7d.failed }}
+      </div>
+    </div>
+    <div class="ops-card">
+      <div>{% translate "Valid phones" %}</div>
+      <div class="ops-metric">{{ ops_phone_total }}</div>
+    </div>
+  </div>
+
+  <h3>{% translate "Yield by source (7d)" %}</h3>
+  <table class="ops-table">
+    <thead>
+      <tr>
+        <th>{% translate "Source" %}</th>
+        <th>{% translate "Runs" %}</th>
+        <th>{% translate "Saved" %}</th>
+        <th>{% translate "Updated" %}</th>
+        <th>{% translate "Failed" %}</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for row in ops_per_source_yield %}
+      <tr>
+        <td>{{ row.source__name|default:"(none)" }}</td>
+        <td>{{ row.runs }}</td>
+        <td>{{ row.saved|default:0 }}</td>
+        <td>{{ row.updated|default:0 }}</td>
+        <td>{{ row.failed }}</td>
+      </tr>
+      {% empty %}
+      <tr><td colspan="5">{% translate "No harvest runs in the last 7 days." %}</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+
+  <h2>{% translate "Recent acquisition decisions" %}</h2>
+  <table class="ops-table">
+    <thead>
+      <tr>
+        <th>{% translate "When" %}</th>
+        <th>{% translate "Outcome" %}</th>
+        <th>{% translate "Source" %}</th>
+        <th>{% translate "City / category" %}</th>
+        <th>{% translate "Notes" %}</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for d in ops_last_decisions %}
+      <tr>
+        <td>{{ d.created_at }}</td>
+        <td>{{ d.outcome }}</td>
+        <td>{% if d.chosen_source %}{{ d.chosen_source.slug }}{% else %}—{% endif %}</td>
+        <td>{{ d.city }} / {{ d.category }}</td>
+        <td class="ops-muted">{{ d.notes|truncatechars:80 }}</td>
+      </tr>
+      {% empty %}
+      <tr><td colspan="5">{% translate "No decisions recorded yet." %}</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+
+  <h2>{% translate "Phone inventory" %}</h2>
+  <div class="ops-grid">
+    <div>
+      <h3>{% translate "Top states" %}</h3>
+      <table class="ops-table">
+        <thead><tr><th>{% translate "State" %}</th><th>{% translate "Count" %}</th></tr></thead>
+        <tbody>
+          {% for row in ops_by_state %}
+          <tr><td>{{ row.state }}</td><td>{{ row.n }}</td></tr>
+          {% empty %}
+          <tr><td colspan="2">—</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    <div>
+      <h3>{% translate "Top sources" %}</h3>
+      <table class="ops-table">
+        <thead><tr><th>{% translate "Source" %}</th><th>{% translate "Count" %}</th></tr></thead>
+        <tbody>
+          {% for row in ops_by_source %}
+          <tr><td>{{ row.source__name }}</td><td>{{ row.n }}</td></tr>
+          {% empty %}
+          <tr><td colspan="2">—</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+{% if app_list %}
+  {% for app in app_list %}
+    <div class="app-{{ app.app_label }} module{% if app.app_url and not app.models %} current-model{% endif %}">
+      <table>
+        <caption>
+          <a href="{{ app.app_url }}" class="section" title="{% blocktranslate with name=app.name %}Models in the {{ name }} application{% endblocktranslate %}">{{ app.name }}</a>
+        </caption>
+        {% for model in app.models %}
+          <tr class="model-{{ model.object_name|lower }}{% if model.admin_url in request.path|cut:'index/' %} current-model{% endif %}">
+            {% if model.admin_url %}
+              <th scope="row"><a href="{{ model.admin_url }}">{{ model.name }}</a></th>
+            {% else %}
+              <th scope="row">{{ model.name }}</th>
+            {% endif %}
+            {% if model.add_url %}
+              <td><a href="{{ model.add_url }}" class="addlink">{% translate 'Add' %}</a></td>
+            {% else %}
+              <td></td>
+            {% endif %}
+            {% if model.admin_url and show_changelinks %}
+              {% if model.view_only %}
+                <td><a href="{{ model.admin_url }}" class="viewlink">{% translate 'View' %}</a></td>
+              {% else %}
+                <td><a href="{{ model.admin_url }}" class="changelink">{% translate 'Change' %}</a></td>
+              {% endif %}
+            {% elif show_changelinks %}
+              <td></td>
+            {% endif %}
+          </tr>
+        {% endfor %}
+      </table>
+    </div>
+  {% endfor %}
+{% else %}
+  <p>{% translate "You don't have permission to view or edit anything." %}</p>
+{% endif %}
+{% endblock %}

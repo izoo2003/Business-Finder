@@ -1,0 +1,89 @@
+---
+description: Nine-phase sequential build plan for the phone collection agent
+alwaysApply: true
+---
+
+# Phased Build Plan
+
+Build sequentially. Each phase is self-contained, testable, and must be finished and verified before starting the next. Do not invent, skip, or merge phases unless the user explicitly directs it.
+
+## Phase 1: Foundation & Project Skeleton
+
+**Goal:** Django project structure, database, and source registry.
+
+**Build:** Django project + core app; PostgreSQL connection; Source Registry model (Yelp, Google Places, Foursquare, OSM + authorized websites); secure API keys and quota fields; basic admin to add/edit sources; logging and env config.
+
+**Deliverable:** Admin lists the four API sources with keys and free-tier limits. No data collection yet.
+
+## Phase 2: Core Data Model & Storage
+
+**Goal:** Permanent home for cleaned phone numbers.
+
+**Build:** Phone Record model (normalized number, business name, address, category, source, timestamps, raw context); indexes on number, area code, state, source; uniqueness so the same number cannot be stored twice; admin browse/search.
+
+**Deliverable:** Schema + admin; manually create test records and confirm they appear.
+
+## Phase 3: First Working API Integration (OpenStreetMap)
+
+**Goal:** Real phones from a free source into the DB.
+
+**Build:** Overpass API client; query by city/area + category for POIs with phones; extract phone, name, address, category; manual trigger (management command or admin button) for a small test query that saves results.
+
+**Deliverable:** Targeted query (e.g. restaurants in Austin) yields real numbers with source attribution. Acquisition → storage path proven.
+
+## Phase 4: Normalization & Basic Validation Pipeline
+
+**Goal:** Clean, consistent US numbers before save.
+
+**Build:** Convert any format to E.164; validity checks (length, US area code); area code → state mapping; reject bad numbers; save path only accepts clean numbers into the main table.
+
+**Deliverable:** Every number from OSM (and future sources) is cleaned/validated; admin shows raw and clean values.
+
+## Phase 5: Higher-Quality API Sources (Yelp first, then others)
+
+**Goal:** Better data quality within free-tier limits.
+
+**Build:** Yelp Fusion client (city + category, pagination); quota tracking for remaining free calls; same extract → normalize → store path; later Google Places and Foursquare with own quota counters; merge/dedupe across sources.
+
+**Deliverable:** Multi-API pulls; Yelp (then Google/Foursquare) alongside OSM; free quotas respected and visible. Follow `quota-tracking.mdc`.
+
+## Phase 6: Enrichment Layer
+
+**Goal:** Extra free information on stored numbers.
+
+**Build:** Background job for new/stale records; offline formatting and line-type checks; free validation service (e.g. DialCode) for carrier, mobile/landline/VoIP, risk; write results back; rate-limit enrichment quotas.
+
+**Deliverable:** Records carry line type, risk hints, confirmed geography; enrichment runs automatically on new data.
+
+## Phase 7: Orchestration, Scheduling & Quota Management
+
+**Goal:** System runs without constant manual triggers.
+
+**Build:** Scheduler selects eligible sources by remaining free quota and priority; rotate OSM (volume) vs commercial APIs (quality); update quota counters after every run; resume from last successful page; health metrics (collected, success rate, quota burn).
+
+**Deliverable:** Scheduled autonomous collection inside free limits. Follow `quota-tracking.mdc`.
+
+## Phase 8: Admin Interface, Search & Monitoring
+
+**Goal:** Operator visibility and control.
+
+**Build:** Admin browse by area code, state, source, date range; dashboard (recent stats, remaining quotas); pause/resume any source; search and export; alerts for low quota, yield drop, API errors.
+
+**Deliverable:** Monitor, search, and control sources without touching code.
+
+## Phase 9: Hardening, Fallbacks & Production Readiness
+
+**Goal:** Robust continuous operation.
+
+**Build:** Error handling and retries for temporary API failures; optional light crawler only for authorized websites; full audit logging of acquisition decisions; performance tuning (indexes, batch sizes, workers within rate limits); docs for adding a source/category; compliance review vs each API’s terms and company approvals.
+
+**Deliverable:** Stable, monitored, auditable agent growing a clean US business phone collection within free/approved limits.
+
+## Mindset
+
+- Finish and test one phase completely before the next.
+- After Phase 3: real data flowing (first major win).
+- After Phase 5: multi-source collection.
+- After Phase 7: largely autonomous.
+- Keep phases small enough to demonstrate weekly progress.
+- Always leave a working system at the end of every phase.

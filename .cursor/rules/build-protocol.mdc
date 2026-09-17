@@ -1,0 +1,20 @@
+---
+description: Build protocol — store docs first; implement only active phases
+alwaysApply: true
+---
+
+# Build Protocol
+
+## Workflow (mandatory)
+
+1. **Project overview** is stored in `project-overview.mdc`. Treat it as the source of truth for architecture, sources, and constraints.
+2. **Quota guardrails** are stored in `quota-tracking.mdc`. Treat it as the source of truth for pre-flight checks, per-source counters, buffers, resets, and never calling a source the agent cannot afford.
+3. **Phase sequence** is stored in `build-phases.mdc`. Treat it as the source of truth for what to build and in what order (Phases 1–9).
+4. **Build only** when the user names a specific phase or asks to start the next pending phase. Do not start coding otherwise.
+5. **Do not invent phases**, skip ahead, or expand scope beyond the current phase plus overview/quota rules.
+6. Prefer official APIs; use website crawling only when the phase and overview allow it (authorized sites only). Respect `quota-tracking.mdc` in every acquisition phase.
+7. After each phase: implement only that phase’s deliverables, verify them, then stop and wait for the next instruction.
+
+## Out of scope until a phase is explicitly started
+
+Django/Celery scaffolding, API clients, models, admin UI, enrichment, crawlers, and any coding beyond updating these rules.

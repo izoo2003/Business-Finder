@@ -1,0 +1,78 @@
+services:
+  db:
+    image: postgres:16
+    container_name: phone_agent_db
+    restart: unless-stopped
+    # Local-dev credentials only — never use these defaults in production.
+    environment:
+      POSTGRES_DB: phone_agent
+      POSTGRES_USER: phone_agent
+      POSTGRES_PASSWORD: phone_agent_dev
+    ports:
+      - "127.0.0.1:5432:5432"
+    volumes:
+      - phone_agent_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U phone_agent -d phone_agent"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    container_name: phone_agent_redis
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  # Linux/prod-like Celery processes (not for Windows host --pool=solo).
+  # Usage: docker compose --profile workers up -d
+  worker:
+    profiles: ["workers"]
+    image: python:3.11-slim
+    working_dir: /app
+    volumes:
+      - .:/app
+    env_file:
+      - .env
+    environment:
+      REDIS_URL: redis://redis:6379/0
+      POSTGRES_HOST: db
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    command: >
+      bash -c "pip install -q -r requirements.txt &&
+      celery -A config worker -l info"
+    restart: unless-stopped
+
+  beat:
+    profiles: ["workers"]
+    image: python:3.11-slim
+    working_dir: /app
+    volumes:
+      - .:/app
+    env_file:
+      - .env
+    environment:
+      REDIS_URL: redis://redis:6379/0
+      POSTGRES_HOST: db
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    command: >
+      bash -c "pip install -q -r requirements.txt &&
+      celery -A config beat -l info"
+    restart: unless-stopped
+
+volumes:
+  phone_agent_pgdata:

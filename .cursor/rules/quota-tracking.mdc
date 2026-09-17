@@ -1,0 +1,112 @@
+---
+description: Centralized quota tracking and guardrails for all data sources
+alwaysApply: true
+---
+
+# Quota Tracking Strategy
+
+Never make an API call the agent cannot afford. Quota management is centralized, proactive, and source-specific. Commercial APIs (Yelp, Google Places, Foursquare) have limited free tiers; OSM/Overpass is free but still has politeness limits.
+
+## 1. Central Quota Store (Source Registry)
+
+Each source maintains continuous quota state:
+
+- Current remaining calls (or free units)
+- Maximum allowed in the current window (daily or monthly)
+- Window type (daily, monthly, or per-SKU)
+- Exact reset time of the current window
+- Last time quota info was refreshed
+- Safety buffer percentage (usually 5–10% left untouched)
+- Status: Healthy / Low / Exhausted / Error
+
+Single source of truth: checked before any job starts; updated after every successful or failed response.
+
+## 2. Pre-Flight Check (Before Any API Call)
+
+In order; all must pass or the job is skipped/deferred and the reason logged:
+
+1. Is the source marked active?
+2. Does remaining quota (after safety buffer) allow at least one full page of results?
+3. Has reset time passed? If yes, restore counters to full free allowance.
+4. Is the source in error or rate-limit cooldown?
+5. For multi-SKU APIs (esp. Google Places): does this specific query type still have free capacity?
+
+## 3. Per-API Measurement and Updates
+
+### Yelp Fusion / Places
+
+- Typically daily free tier (often a few hundred calls/day; some accounts higher).
+- Read rate-limit headers after every response (remaining, daily limit, reset); update central counters immediately.
+- Missing headers or daily limit hit → mark Exhausted until next midnight UTC reset.
+- Safety buffer: leave **10%** of daily allowance unused.
+
+### Google Places API
+
+- Free capacity is **monthly and per-SKU** (Text Search, Nearby Search, Place Details, etc.). Phone/contact fields often higher-tier SKUs with smaller free allowances.
+- Track usage separately per SKU the agent uses.
+- Before a query: decide which SKU it consumes; check that counter.
+- After response: increment that SKU counter.
+- Reset counters to free caps at start of each calendar month.
+- Treat Google as high-quality, low-volume; use only when remaining free capacity is meaningful.
+
+### Foursquare Places
+
+- Modest monthly free allowance on Pro endpoints (commonly a few hundred calls).
+- Decrement remaining-calls counter after every successful response.
+- Reset on monthly billing/anniversary date in the source registry.
+- Same safety-buffer approach as Yelp.
+
+### OpenStreetMap / Overpass
+
+- Officially unlimited/free; public instances expect polite use (query size and frequency).
+- No hard numeric quota; track calls made in last hour / last day.
+- Soft limits: max concurrent queries; cool-down on 429 or 504.
+- On slowdown/rate-limit: back off; optionally switch to self-hosted Overpass if available.
+- High-volume “always available” source when commercial free tiers are low.
+
+## 4. Real-Time Update Flow (After Every Response)
+
+1. Read rate-limit / remaining-quota headers from the provider.
+2. Calculate usage (one call = one unit for most endpoints; some Google SKUs differ).
+3. Update central counters and remaining value.
+4. Recalculate status (Healthy / Low / Exhausted).
+5. Record update timestamp.
+6. If remaining falls below safety buffer → mark Low or Exhausted so future jobs skip until reset.
+
+## 5. Reset Handling
+
+- **Daily** (Yelp-style): at recorded reset (usually midnight UTC) restore remaining to full free allowance.
+- **Monthly** (Google, Foursquare): on first of month or recorded anniversary, restore all relevant counters.
+- Scheduler checks reset times at the start of every cycle so counters refresh even if no job ran recently.
+
+## 6. Prioritization Using Quota State
+
+When choosing the next source, consider:
+
+- Remaining free capacity (prefer Healthy room)
+- Data quality ranking (Yelp and Google above OSM when they have quota)
+- Time since last successful run
+- Status (never choose Exhausted)
+
+Natural rotation: commercial APIs while free calls remain → OSM for volume until next reset.
+
+## 7. Monitoring, Alerts, Safety Nets
+
+- Dashboard: remaining quota and reset time per source.
+- Alert when: below safety buffer; Exhausted earlier than expected; headers mismatch expected free-tier (possible plan change); repeated OSM soft rate-limits.
+- Manual override: force pause or reset counters.
+- All quota decisions written to the audit log.
+
+## 8. Daily Rhythm
+
+1. Scheduler wakes.
+2. Pre-flight quota check per active source.
+3. Order eligible sources by remaining capacity + quality priority.
+4. Run jobs only for sources with usable free room.
+5. After each response, update counters from headers or calculated usage.
+6. Refresh status and remaining values.
+7. At buffer → auto-skip until reset window.
+
+## Principle
+
+Stay strictly inside free and approved limits, prevent accidental paid overages, maximize useful data collected each day.
