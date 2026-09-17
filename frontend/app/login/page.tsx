@@ -20,7 +20,13 @@ export default function LoginPage() {
       await api.login(username, password);
       router.replace("/scraper");
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Could not sign in.");
+      if (err instanceof ApiError) {
+        setError(err.message);
+      } else if (err instanceof Error && err.message) {
+        setError(err.message);
+      } else {
+        setError("Could not sign in.");
+      }
     } finally {
       setBusy(false);
     }

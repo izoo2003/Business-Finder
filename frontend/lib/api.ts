@@ -16,11 +16,20 @@ let csrfToken = "";
 
 async function ensureCsrf(): Promise<string> {
   if (csrfToken) return csrfToken;
-  const response = await fetch(`${API_BASE}/api/auth/csrf/`, {
-    credentials: "include",
-  });
+  let response: Response;
+  try {
+    response = await fetch(`${API_BASE}/api/auth/csrf/`, {
+      credentials: "include",
+    });
+  } catch {
+    throw new Error(
+      "Could not reach the API. Check BACKEND_URL on Vercel and that Railway is up.",
+    );
+  }
   if (!response.ok) {
-    throw new Error("Could not start a secure session.");
+    throw new Error(
+      `Could not start a secure session (HTTP ${response.status}).`,
+    );
   }
   const data = (await response.json()) as { csrfToken: string };
   csrfToken = data.csrfToken;

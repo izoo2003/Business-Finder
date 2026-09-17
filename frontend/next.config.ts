@@ -8,6 +8,9 @@ const backend = (
 
 const nextConfig: NextConfig = {
   reactStrictMode: true,
+  // Django API routes use trailing slashes. Vercel's default slash redirect
+  // fights APPEND_SLASH and creates an infinite loop on /api/*.
+  skipTrailingSlashRedirect: true,
   async rewrites() {
     return [
       {
