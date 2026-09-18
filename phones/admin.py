@@ -1,8 +1,6 @@
-import csv
-
 from django.contrib import admin, messages
-from django.http import HttpResponse
-from django.utils import timezone
+
+from phones.csv_export import build_phone_csv_response
 
 from .models import PhoneRecord
 
@@ -76,48 +74,14 @@ class PhoneRecordAdmin(admin.ModelAdmin):
 
     @admin.action(description="Export selected as CSV")
     def export_selected_csv(self, request, queryset):
-        response = HttpResponse(content_type="text/csv")
-        stamp = timezone.now().strftime("%Y%m%d_%H%M%S")
-        response["Content-Disposition"] = (
-            f'attachment; filename="phone_records_{stamp}.csv"'
+        qs = queryset.select_related("source").order_by(
+            "state", "city", "business_name", "e164"
         )
-        writer = csv.writer(response)
-        writer.writerow(
-            [
-                "e164",
-                "national_format",
-                "business_name",
-                "city",
-                "state",
-                "area_code",
-                "source",
-                "validation_status",
-                "enrichment_status",
-                "line_type",
-                "risk_level",
-                "last_seen_at",
-            ]
-        )
-        for row in queryset.select_related("source").iterator():
-            writer.writerow(
-                [
-                    row.e164,
-                    row.national_format,
-                    row.business_name,
-                    row.city,
-                    row.state,
-                    row.area_code,
-                    row.source.slug if row.source_id else "",
-                    row.validation_status,
-                    row.enrichment_status,
-                    row.line_type,
-                    row.risk_level,
-                    row.last_seen_at.isoformat() if row.last_seen_at else "",
-                ]
-            )
+        count = qs.count()
+        response = build_phone_csv_response(qs, filename_prefix="phone_records")
         self.message_user(
             request,
-            f"Exported {queryset.count()} phone record(s) to CSV.",
+            f"Exported {count} phone record(s) to CSV.",
             messages.SUCCESS,
         )
         return response

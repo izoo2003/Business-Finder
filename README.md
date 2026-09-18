@@ -143,14 +143,16 @@ Open **http://127.0.0.1:3000** and sign in with your staff user.
 ### 3. Manual processes (if not using the script)
 
 ```powershell
-docker compose up -d
+docker compose up -d db redis
 python manage.py runserver
 celery -A config worker -l info --pool=solo -n worker1@%h
 celery -A config beat -l info
 cd frontend; npm install; npm run dev
 ```
 
-Linux Compose workers (optional): `docker compose --profile workers up -d`
+Linux / VPS: `docker compose up -d` also starts the Celery worker and Beat.
+
+Live (Railway): add Redis + separate **worker** and **beat** services — see [docs/railway-deploy.md](docs/railway-deploy.md). Operators only press Start in Phone Desk; they never manage Celery.
 
 Production: use a real WSGI server — do **not** use `runserver`. See [docs/production-runbook.md](docs/production-runbook.md).
 
@@ -222,6 +224,7 @@ Keys can also be pasted in Phone Desk → **Keys** (encrypted in DB; env remains
 | Doc | Contents |
 |-----|----------|
 | [docs/production-runbook.md](docs/production-runbook.md) | Start order, Windows vs Linux workers, health checks, env tunables |
+| [docs/railway-deploy.md](docs/railway-deploy.md) | Live Railway: Redis + always-on worker/beat so Start Just Works |
 | [docs/adding-a-source.md](docs/adding-a-source.md) | Register a new API or authorized website |
 | [docs/categories.md](docs/categories.md) | Orchestration categories and OSM tag map |
 | [docs/compliance.md](docs/compliance.md) | Provider ToS, attribution, crawl policy |

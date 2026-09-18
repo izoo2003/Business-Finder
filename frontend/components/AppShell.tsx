@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
-import { api, ApiError, clearCsrf } from "@/lib/api";
+import { api, clearSessionCache } from "@/lib/api";
 
 const LINKS = [
   { href: "/scraper", label: "Scraper" },
@@ -17,28 +17,46 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const [username, setUsername] = useState("");
   const [ready, setReady] = useState(false);
+  const [bootError, setBootError] = useState("");
 
   useEffect(() => {
+    let cancelled = false;
+    const timer = window.setTimeout(() => {
+      if (cancelled) return;
+      setBootError(
+        "The server is busy or offline. Redirecting to sign in — try again in a moment.",
+      );
+      window.setTimeout(() => {
+        if (!cancelled) router.replace("/login");
+      }, 2500);
+    }, 12_000);
+
     api
       .me()
       .then((user) => {
+        if (cancelled) return;
+        window.clearTimeout(timer);
         setUsername(user.username);
         setReady(true);
+        setBootError("");
       })
-      .catch((err: unknown) => {
-        if (err instanceof ApiError && (err.status === 401 || err.status === 403)) {
-          router.replace("/login");
-          return;
-        }
+      .catch(() => {
+        if (cancelled) return;
+        window.clearTimeout(timer);
         router.replace("/login");
       });
+
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+    };
   }, [router]);
 
   async function signOut() {
     try {
       await api.logout();
     } finally {
-      clearCsrf();
+      clearSessionCache();
       router.replace("/login");
     }
   }
@@ -47,6 +65,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
     return (
       <div className="main">
         <p className="lede">Opening Phone Desk…</p>
+        {bootError ? <div className="banner">{bootError}</div> : null}
       </div>
     );
   }
@@ -67,6 +86,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
             <Link
               key={link.href}
               href={link.href}
+              prefetch
               className={pathname === link.href ? "active" : ""}
             >
               {link.label}

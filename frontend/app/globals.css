@@ -11,9 +11,9 @@
   --low: #a07812;
   --rule: #c5d2cb;
   --focus: #1c2a26;
-  --sans: "Sora", "Segoe UI", sans-serif;
-  --num: "IBM Plex Mono", ui-monospace, monospace;
-  --credit: "Cormorant Garamond", "Palatino Linotype", Palatino, serif;
+  --sans: var(--font-sans), "Segoe UI", sans-serif;
+  --num: var(--font-num), ui-monospace, monospace;
+  --credit: var(--font-credit), "Palatino Linotype", Palatino, serif;
 }
 
 * {

@@ -1,0 +1,10 @@
+# Celery worker — always-on background collection engine.
+# In Railway: New Service → same repo → Settings → Config-as-code path:
+#   railway.worker.toml
+# Share REDIS_URL + DATABASE_URL (or POSTGRES_*) with the web service.
+# Do NOT assign a public domain.
+
+[deploy]
+startCommand = "celery -A config worker -l info"
+restartPolicyType = "ALWAYS"
+restartPolicyMaxRetries = 10

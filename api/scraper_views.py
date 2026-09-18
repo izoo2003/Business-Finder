@@ -42,8 +42,9 @@ def start_view(request: Request) -> Response:
     payload = _json_status()
     if not payload["worker_online"] or not payload["redis_online"]:
         payload["detail"] = (
-            "Collection is marked as running, but the background worker is offline. "
-            "Start Redis and the worker so numbers can be collected."
+            "Collection is marked as on, but the server collection service is "
+            "temporarily unavailable. Numbers will start coming in once hosting "
+            "restores it — this is not something you fix from this screen."
         )
     return Response(payload)
 

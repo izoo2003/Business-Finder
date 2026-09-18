@@ -2,11 +2,8 @@
 
 from __future__ import annotations
 
-import csv
-
 from django.db.models import Q, QuerySet
 from django.http import HttpResponse
-from django.utils import timezone
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.pagination import PageNumberPagination
 from rest_framework.request import Request
@@ -15,6 +12,7 @@ from rest_framework.status import HTTP_404_NOT_FOUND
 
 from api.copy import isoformat
 from api.permissions import IsStaffUser
+from phones.csv_export import build_phone_csv_response
 from phones.models import PhoneRecord
 from sources.models import DataSource
 
@@ -114,51 +112,14 @@ def phone_filters(request: Request) -> Response:
         .distinct()
         .order_by("state")
     )
-    cities = list(
-        PhoneRecord.objects.exclude(city="")
-        .values_list("city", flat=True)
-        .distinct()
-        .order_by("city")[:200]
-    )
     sources = list(
         DataSource.objects.order_by("priority", "name").values("slug", "name")
     )
-    return Response({"states": states, "cities": cities, "sources": sources})
+    return Response({"states": states, "sources": sources})
 
 
 @api_view(["GET"])
 @permission_classes([IsStaffUser])
 def phone_export(request: Request) -> HttpResponse:
-    qs = _filtered_phones(request)
-    response = HttpResponse(content_type="text/csv")
-    stamp = timezone.now().strftime("%Y%m%d_%H%M%S")
-    response["Content-Disposition"] = f'attachment; filename="phone_numbers_{stamp}.csv"'
-    writer = csv.writer(response)
-    writer.writerow(
-        [
-            "phone",
-            "business",
-            "address",
-            "city",
-            "state",
-            "category",
-            "source",
-            "line_type",
-            "last_seen",
-        ]
-    )
-    for row in qs.iterator():
-        writer.writerow(
-            [
-                row.national_format or row.e164,
-                row.business_name,
-                row.address,
-                row.city,
-                row.state,
-                row.category,
-                row.source.name if row.source_id else "",
-                row.line_type,
-                row.last_seen_at.isoformat() if row.last_seen_at else "",
-            ]
-        )
-    return response
+    qs = _filtered_phones(request).order_by("state", "city", "business_name", "e164")
+    return build_phone_csv_response(qs.iterator(chunk_size=500))

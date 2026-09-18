@@ -1,8 +1,8 @@
 "use client";
 
 import { FormEvent, useCallback, useEffect, useRef, useState } from "react";
-import AppShell from "@/components/AppShell";
 import { api, ApiError } from "@/lib/api";
+import { startVisiblePoll } from "@/lib/polling";
 import type { Alert, ScraperStatus } from "@/lib/types";
 
 function formatWhen(value: string | null): string {
@@ -76,39 +76,67 @@ export default function ScraperPage() {
   const [cityDraft, setCityDraft] = useState("");
   const [categoryDraft, setCategoryDraft] = useState("");
   const dirtyRef = useRef(false);
+  const runningRef = useRef(false);
+  const alertAtRef = useRef(0);
 
   const applyStatus = useCallback((next: ScraperStatus, forceFilters = false) => {
     setStatus(next);
+    runningRef.current = Boolean(next.running);
     if (forceFilters || !dirtyRef.current) {
       setCities(next.cities || []);
       setCategories(next.categories || []);
     }
   }, []);
 
-  const refresh = useCallback(async () => {
-    const [next, alertPayload] = await Promise.all([api.scraperStatus(), api.alerts()]);
-    applyStatus(next);
-    setAlerts(alertPayload.alerts);
-  }, [applyStatus]);
-
   useEffect(() => {
-    refresh().catch((err) => {
-      setError(err instanceof ApiError ? err.message : "Could not load scraper status.");
-    });
-    const timer = window.setInterval(() => {
-      refresh().catch(() => undefined);
-    }, 3000);
-    return () => window.clearInterval(timer);
-  }, [refresh]);
+    let first = true;
+    return startVisiblePoll(
+      async () => {
+        try {
+          const next = await api.scraperStatus();
+          applyStatus(next);
+          const now = Date.now();
+          if (first || now - alertAtRef.current > 45_000) {
+            const alertPayload = await api.alerts();
+            setAlerts(alertPayload.alerts);
+            alertAtRef.current = now;
+          }
+          if (first) first = false;
+        } catch (err) {
+          if (first) {
+            setError(
+              err instanceof ApiError ? err.message : "Could not load scraper status.",
+            );
+            first = false;
+          }
+        }
+      },
+      () => (runningRef.current ? 4000 : 12_000),
+    );
+  }, [applyStatus]);
 
   async function toggle() {
     if (!status) return;
+    const stopping = status.running;
     setBusy(true);
     setError("");
+    // Optimistic Stop so the UI does not freeze while the API catches up.
+    if (stopping) {
+      applyStatus({ ...status, running: false });
+      runningRef.current = false;
+    }
     try {
-      const next = status.running ? await api.scraperStop() : await api.scraperStart();
+      const next = stopping ? await api.scraperStop() : await api.scraperStart();
       applyStatus(next);
     } catch (err) {
+      if (stopping) {
+        // Re-sync from server on failure.
+        try {
+          applyStatus(await api.scraperStatus());
+        } catch {
+          /* ignore */
+        }
+      }
       setError(err instanceof ApiError ? err.message : "Could not change the scraper.");
     } finally {
       setBusy(false);
@@ -168,17 +196,18 @@ export default function ScraperPage() {
   const current = status?.current;
 
   return (
-    <AppShell>
+    <>
       <h1 className="page-title">Scraper</h1>
       <p className="lede">
-        Press Start and leave this page open. The desk collects public business
-        numbers city by city. Press Stop when you are done.
+        Press Start to collect public business numbers city by city. You can
+        leave this page — collection keeps running on the server. Press Stop
+        when you are done.
       </p>
 
-      {!status?.worker_online ? (
+      {!status?.worker_online || !status?.redis_online ? (
         <div className="banner">
-          The background worker is offline. Numbers will not come in until the
-          worker is started.
+          Phone collection is temporarily unavailable on the server. Please try
+          again later, or contact whoever hosts this app if it continues.
         </div>
       ) : null}
 
@@ -197,7 +226,17 @@ export default function ScraperPage() {
             type="button"
             className={`rocker ${status?.running ? "stop" : ""}`}
             onClick={toggle}
-            disabled={busy}
+            disabled={
+              busy ||
+              (!status?.running &&
+                (!status?.worker_online || !status?.redis_online))
+            }
+            title={
+              !status?.running &&
+              (!status?.worker_online || !status?.redis_online)
+                ? "Collection is unavailable until the server is restored"
+                : undefined
+            }
           >
             {status?.running ? "Stop collecting" : "Start collecting"}
           </button>
@@ -317,6 +356,6 @@ export default function ScraperPage() {
           </table>
         )}
       </div>
-    </AppShell>
+    </>
   );
 }

@@ -1,0 +1,10 @@
+# Celery Beat — always-on scheduler (exactly ONE instance).
+# In Railway: New Service → same repo → Settings → Config-as-code path:
+#   railway.beat.toml
+# Share REDIS_URL + DATABASE_URL (or POSTGRES_*) with the web service.
+# Do NOT assign a public domain. Never run two Beat services.
+
+[deploy]
+startCommand = "celery -A config beat -l info"
+restartPolicyType = "ALWAYS"
+restartPolicyMaxRetries = 10

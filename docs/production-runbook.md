@@ -1,18 +1,32 @@
 # Production runbook
 
-## Start order
+## Product rule
 
-1. Postgres (`docker compose up -d db`) — healthy; ports bound to `127.0.0.1` only
-2. Redis (`docker compose up -d redis`) — `127.0.0.1:6379`
+**Operators never start Redis or Celery.** Those run as always-on hosting services.  
+Phone Desk **Start** / **Stop** only turns collection on or off.
+
+Live Railway setup: [railway-deploy.md](railway-deploy.md).
+
+## Start order (infrastructure)
+
+1. Postgres — healthy
+2. Redis
 3. `python manage.py migrate` && `python manage.py seed_sources`
-4. Celery worker
-5. Celery Beat (**one instance only**)
+4. Celery **worker** (always on, restart on failure)
+5. Celery **Beat** (**one instance only**, always on)
 6. Production WSGI (do **not** use `runserver` in production)
+7. Frontend (Phone Desk)
 
-## Windows (local)
+## Windows (local operator machine)
 
 ```powershell
-docker compose up -d
+powershell -File .\scripts\start-operator.ps1
+```
+
+Or manually:
+
+```powershell
+docker compose up -d db redis
 celery -A config worker -l info --pool=solo -n worker1@%h
 celery -A config beat -l info
 python manage.py runserver
@@ -20,13 +34,17 @@ python manage.py runserver
 
 Use a unique `-n` if you ever run multiple workers. Avoid duplicate default nodenames.
 
-## Linux / Compose workers
+## Linux / VPS (Docker)
 
-```powershell
-docker compose --profile workers up -d
+```bash
+docker compose up -d
 ```
 
-Compose `worker` / `beat` services use the default Celery pool (Linux containers). On Windows hosts, prefer the venv + `--pool=solo` path above.
+Starts Postgres, Redis, **worker**, and **Beat** with `restart: unless-stopped`. Run Gunicorn / the frontend beside that stack (or behind your reverse proxy).
+
+## Railway (recommended live)
+
+See [railway-deploy.md](railway-deploy.md): separate **web**, **worker**, **beat** services + Redis plugin. Same repo; different start commands. After that, users only press Start in Phone Desk.
 
 ## Secrets & GitHub readiness
 
@@ -54,7 +72,8 @@ python manage.py run_acquisition_cycle --dry-run
 | Symptom | Action |
 |---------|--------|
 | DuplicateNodenameWarning | Kill extra workers; start one with `-n worker1@%h` |
-| Broker connection refused | Start Redis; confirm `REDIS_URL` |
+| Broker connection refused | Start Redis; confirm `REDIS_URL` on web **and** worker/beat |
+| Scraper “temporarily unavailable” | Worker or Redis down — redeploy Railway worker/Redis; not a Phone Desk setting |
 | Source stuck ERROR | Wait `SOURCE_ERROR_COOLDOWN_MINUTES` or set Healthy in admin |
 | Quota exhausted | Wait reset; scheduler falls through to OSM/soft sources |
 | Beat not firing | Ensure single Beat process; check `CELERY_BEAT_SCHEDULE` |

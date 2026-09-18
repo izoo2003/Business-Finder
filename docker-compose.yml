@@ -30,10 +30,9 @@ services:
       timeout: 3s
       retries: 10
 
-  # Linux/prod-like Celery processes (not for Windows host --pool=solo).
-  # Usage: docker compose --profile workers up -d
+  # Always-on collection engine (Linux containers — fine on Docker Desktop too).
+  # On bare Windows without Docker workers, use scripts/start-operator.ps1 instead.
   worker:
-    profiles: ["workers"]
     image: python:3.11-slim
     working_dir: /app
     volumes:
@@ -54,7 +53,6 @@ services:
     restart: unless-stopped
 
   beat:
-    profiles: ["workers"]
     image: python:3.11-slim
     working_dir: /app
     volumes:

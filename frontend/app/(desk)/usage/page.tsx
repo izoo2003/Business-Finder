@@ -2,8 +2,8 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
-import AppShell from "@/components/AppShell";
 import { api, ApiError } from "@/lib/api";
+import { startVisiblePoll } from "@/lib/polling";
 import type { UsagePayload } from "@/lib/types";
 
 export default function UsagePage() {
@@ -11,20 +11,26 @@ export default function UsagePage() {
   const [error, setError] = useState("");
 
   useEffect(() => {
-    api
-      .usage()
-      .then(setData)
-      .catch((err) => {
-        setError(err instanceof ApiError ? err.message : "Could not load usage.");
-      });
-    const timer = window.setInterval(() => {
-      api.usage().then(setData).catch(() => undefined);
-    }, 8000);
-    return () => window.clearInterval(timer);
+    let first = true;
+    return startVisiblePoll(
+      async () => {
+        try {
+          const payload = await api.usage();
+          setData(payload);
+          if (first) first = false;
+        } catch (err) {
+          if (first) {
+            setError(err instanceof ApiError ? err.message : "Could not load usage.");
+            first = false;
+          }
+        }
+      },
+      () => 45_000,
+    );
   }, []);
 
   return (
-    <AppShell>
+    <>
       <h1 className="page-title">Usage</h1>
       <p className="lede">
         Each source has a limited number of free lookups. The filled bar is how
@@ -88,6 +94,6 @@ export default function UsagePage() {
           );
         })}
       </div>
-    </AppShell>
+    </>
   );
 }

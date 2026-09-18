@@ -1,7 +1,6 @@
 "use client";
 
 import { FormEvent, useEffect, useState } from "react";
-import AppShell from "@/components/AppShell";
 import { api, ApiError } from "@/lib/api";
 import type { KeyCard } from "@/lib/types";
 
@@ -14,12 +13,20 @@ export default function KeysPage() {
   const [error, setError] = useState("");
 
   useEffect(() => {
+    let cancelled = false;
     api
       .keys()
-      .then((payload) => setCards(payload.results))
+      .then((payload) => {
+        if (!cancelled) setCards(payload.results);
+      })
       .catch((err) => {
-        setError(err instanceof ApiError ? err.message : "Could not load keys.");
+        if (!cancelled) {
+          setError(err instanceof ApiError ? err.message : "Could not load keys.");
+        }
       });
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   async function save(event: FormEvent, slug: string) {
@@ -45,7 +52,7 @@ export default function KeysPage() {
   }
 
   return (
-    <AppShell>
+    <>
       <h1 className="page-title">Keys</h1>
       <p className="lede">
         When a source runs out of free lookups, open its signup link, create a
@@ -115,6 +122,6 @@ export default function KeysPage() {
           </section>
         ))}
       </div>
-    </AppShell>
+    </>
   );
 }

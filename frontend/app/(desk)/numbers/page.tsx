@@ -1,12 +1,12 @@
 "use client";
 
 import { FormEvent, useEffect, useMemo, useState } from "react";
-import AppShell from "@/components/AppShell";
 import { api, ApiError, downloadCsv } from "@/lib/api";
 import type { PhoneDetail, PhoneFilters, PhoneRow } from "@/lib/types";
 
 export default function NumbersPage() {
-  const [filters, setFilters] = useState<PhoneFilters>({ states: [], cities: [], sources: [] });
+  const [filters, setFilters] = useState<PhoneFilters>({ states: [], sources: [] });
+  const [qInput, setQInput] = useState("");
   const [q, setQ] = useState("");
   const [state, setState] = useState("");
   const [source, setSource] = useState("");
@@ -29,13 +29,35 @@ export default function NumbersPage() {
   }, [q, state, source, page]);
 
   useEffect(() => {
-    api.phoneFilters().then(setFilters).catch(() => undefined);
+    const timer = window.setTimeout(() => {
+      const next = qInput.trim();
+      setQ((prev) => {
+        if (prev === next) return prev;
+        setPage(1);
+        return next;
+      });
+    }, 350);
+    return () => window.clearTimeout(timer);
+  }, [qInput]);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    api
+      .phoneFilters(controller.signal)
+      .then(setFilters)
+      .catch((err) => {
+        if (controller.signal.aborted || (err instanceof Error && err.name === "AbortError")) {
+          return;
+        }
+      });
+    return () => controller.abort();
   }, []);
 
   useEffect(() => {
+    const controller = new AbortController();
     setError("");
     api
-      .phones(query)
+      .phones(query, controller.signal)
       .then((payload) => {
         setRows(payload.results);
         setCount(payload.count);
@@ -43,12 +65,17 @@ export default function NumbersPage() {
         setPrevious(payload.previous);
       })
       .catch((err) => {
+        if (controller.signal.aborted || (err instanceof Error && err.name === "AbortError")) {
+          return;
+        }
         setError(err instanceof ApiError ? err.message : "Could not load numbers.");
       });
+    return () => controller.abort();
   }, [query]);
 
   function onSearch(event: FormEvent) {
     event.preventDefault();
+    setQ(qInput.trim());
     setPage(1);
   }
 
@@ -74,7 +101,7 @@ export default function NumbersPage() {
   }
 
   return (
-    <AppShell>
+    <>
       <h1 className="page-title">Numbers</h1>
       <p className="lede">
         Every collected phone with the business, state, and source it came from.
@@ -84,11 +111,8 @@ export default function NumbersPage() {
 
       <form className="filters" onSubmit={onSearch}>
         <input
-          value={q}
-          onChange={(e) => {
-            setQ(e.target.value);
-            setPage(1);
-          }}
+          value={qInput}
+          onChange={(e) => setQInput(e.target.value)}
           placeholder="Search business, city, or phone"
         />
         <select
@@ -210,6 +234,6 @@ export default function NumbersPage() {
           </aside>
         </>
       ) : null}
-    </AppShell>
+    </>
   );
 }

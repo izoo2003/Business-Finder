@@ -76,7 +76,6 @@ export type PhonePage = {
 
 export type PhoneFilters = {
   states: string[];
-  cities: string[];
   sources: { slug: string; name: string }[];
 };
 

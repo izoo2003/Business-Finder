@@ -23,6 +23,9 @@ logger = logging.getLogger("acquisition")
 
 LOCK_KEY = "scraper:loop:lock"
 LOCK_TTL_SECONDS = 180
+_HEALTH_TTL = timedelta(seconds=30)
+_worker_cache: tuple[bool, object] | None = None
+_redis_cache: tuple[bool, object] | None = None
 
 
 def redis_client() -> redis.Redis:
@@ -35,8 +38,15 @@ def redis_client() -> redis.Redis:
 
 
 def worker_online() -> bool:
-    """True when at least one Celery worker answers ping. Never block the API."""
+    """True when at least one Celery worker answers ping. Cached briefly."""
+    global _worker_cache
     from concurrent.futures import ThreadPoolExecutor, TimeoutError as FuturesTimeout
+
+    now = timezone.now()
+    if _worker_cache is not None:
+        value, checked_at = _worker_cache
+        if now - checked_at < _HEALTH_TTL:
+            return value
 
     def _ping() -> bool:
         inspector: Inspect = celery_app.control.inspect(timeout=0.3)
@@ -45,19 +55,30 @@ def worker_online() -> bool:
 
     pool = ThreadPoolExecutor(max_workers=1)
     try:
-        return bool(pool.submit(_ping).result(timeout=0.8))
+        value = bool(pool.submit(_ping).result(timeout=0.8))
     except (FuturesTimeout, Exception):
         logger.debug("Celery inspect ping failed", exc_info=True)
-        return False
+        value = False
     finally:
         pool.shutdown(wait=False, cancel_futures=True)
 
+    _worker_cache = (value, now)
+    return value
+
 
 def redis_online() -> bool:
+    global _redis_cache
+    now = timezone.now()
+    if _redis_cache is not None:
+        value, checked_at = _redis_cache
+        if now - checked_at < _HEALTH_TTL:
+            return value
     try:
-        return bool(redis_client().ping())
+        value = bool(redis_client().ping())
     except Exception:
-        return False
+        value = False
+    _redis_cache = (value, now)
+    return value
 
 
 def acquire_loop_lock(owner: str) -> bool:
