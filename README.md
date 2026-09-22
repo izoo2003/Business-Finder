@@ -1,4 +1,4 @@
-# Phone Scrapper
+# Business Scrapper
 
 Continuous **US business phone number collection agent**. It pulls publicly listed numbers from official place APIs, normalizes them to E.164, deduplicates with full provenance, respects free-tier quotas, optionally enriches records, and exposes an operator UI (**Phone Desk**) plus Django admin.
 
